@@ -1,40 +1,47 @@
-import os
 import json
+from pathlib import Path
 
-CONTENT_DIR = "content"
+CONTENT_DIR = Path("content")
 
-allowed_ext = (".jpg", ".jpeg", ".png", ".mp4", ".mov")
+items = []
 
-index = []
+for source_dir in CONTENT_DIR.iterdir():
 
-for source in os.listdir(CONTENT_DIR):
-    source_path = os.path.join(CONTENT_DIR, source)
-
-    if not os.path.isdir(source_path):
+    if not source_dir.is_dir():
         continue
 
-    for year in os.listdir(source_path):
-        year_path = os.path.join(source_path, year)
+    source = source_dir.name.lower()
 
-        if not os.path.isdir(year_path):
+    for file in source_dir.rglob("*"):
+
+        if not file.is_file():
             continue
 
-        for file in os.listdir(year_path):
-            if not file.lower().endswith(allowed_ext):
-                continue
+        ext = file.suffix.lower()
 
-            full_path = os.path.join(year_path, file)
+        if ext not in [
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif",
+            ".mp4",
+            ".mov"
+        ]:
+            continue
 
-            file_type = "video" if file.lower().endswith((".mp4", ".mov")) else "image"
+        try:
+            year = int(file.name[:4])
+        except:
+            year = 0
 
-            index.append({
-                "file": full_path,
-                "year": int(year),
-                "source": source,
-                "type": file_type
-            })
+        items.append({
+            "file": str(file).replace("\\", "/"),
+            "source": source,
+            "year": year
+        })
 
-with open("index.json", "w") as f:
-    json.dump(index, f, indent=2)
+with open("index.json", "w", encoding="utf-8") as f:
+    json.dump(items, f, indent=2)
 
-print(f"Generated {len(index)} entries")
+print(f"Indexed {len(items)} items")
