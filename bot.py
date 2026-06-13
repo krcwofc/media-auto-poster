@@ -3,52 +3,144 @@ import random
 import os
 import requests
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# =====================================
+# CONFIG
+# =====================================
+
 webhook = os.environ["DISCORD_WEBHOOK"]
 
-index = json.load(open("index.json"))
-state = json.load(open("state.json"))
+# =====================================
+# MANILA TIME
+# =====================================
+
+manila_hour = datetime.now(
+    ZoneInfo("Asia/Manila")
+).hour
+
+# =====================================
+# BROADCAST BLOCKS
+# =====================================
+
+if 6 <= manila_hour < 12:
+    block_name = "🌅 Morning Archive"
+
+    weights = {
+        "kathryn": 40,
+        "james": 40,
+        "kathreid": 20
+    }
+
+elif 12 <= manila_hour < 18:
+    block_name = "☀️ Daytime Broadcast"
+
+    weights = {
+        "kathryn": 35,
+        "james": 35,
+        "kathreid": 30
+    }
+
+else:
+    block_name = "🌙 Prime Time Archive"
+
+    weights = {
+        "kathryn": 20,
+        "james": 20,
+        "kathreid": 60
+    }
+
+# =====================================
+# LOAD FILES
+# =====================================
+
+with open("index.json", "r", encoding="utf-8") as f:
+    index = json.load(f)
+
+with open("state.json", "r", encoding="utf-8") as f:
+    state = json.load(f)
+
+with open("captions.json", "r", encoding="utf-8") as f:
+    captions = json.load(f)
 
 seen = set(state.get("seen", []))
 
-counts = state.get("source_counts", {
-    "kathryn": 0,
-    "james": 0,
-    "kathreid": 0
-})
+# =====================================
+# PICK SOURCE BY TIME BLOCK
+# =====================================
 
-available = [x for x in index if x["file"] not in seen]
+preferred_source = random.choices(
+    population=list(weights.keys()),
+    weights=list(weights.values()),
+    k=1
+)[0]
+
+# =====================================
+# FIND AVAILABLE CONTENT
+# =====================================
+
+available = [
+    item for item in index
+    if item["file"] not in seen
+    and item["source"] == preferred_source
+]
+
+# fallback if source exhausted
 
 if not available:
-    available = index
+    available = [
+        item for item in index
+        if item["file"] not in seen
+    ]
+
+# full reset after archive completed
+
+if not available:
     seen = set()
-    counts = {"kathryn": 0, "james": 0, "kathreid": 0}
+    available = index
 
-def score(item):
-    source = item["source"]
-    return (1 / (1 + counts.get(source, 0))) * random.uniform(0.85, 1.15)
+# =====================================
+# SELECT ITEM
+# =====================================
 
-weighted = sorted(available, key=score, reverse=True)
+item = random.choice(available)
 
-pool = weighted[:5] if len(weighted) >= 5 else weighted
-item = random.choice(pool)
+# =====================================
+# CAPTION
+# =====================================
 
-captions = json.load(open("captions.json"))
-caption = random.choice(captions).format(year=item["year"])
+caption_template = random.choice(captions)
+
+caption = (
+    f"{block_name}\n\n"
+    + caption_template.format(year=item["year"])
+)
+
+# =====================================
+# POST TO DISCORD
+# =====================================
 
 with open(item["file"], "rb") as f:
-    requests.post(
+    response = requests.post(
         webhook,
         data={"content": caption},
         files={"file": f}
     )
 
+response.raise_for_status()
+
+# =====================================
+# UPDATE STATE
+# =====================================
+
 seen.add(item["file"])
-counts[item["source"]] = counts.get(item["source"], 0) + 1
 
 state["seen"] = list(seen)
-state["source_counts"] = counts
 
-with open("state.json", "w") as f:
+with open("state.json", "w", encoding="utf-8") as f:
     json.dump(state, f, indent=2)
 
-print("Posted:", item["file"])
+print(f"Posted: {item['file']}")
+print(f"Block: {block_name}")
+print(f"Source: {preferred_source}")
