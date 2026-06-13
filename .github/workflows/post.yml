@@ -2,7 +2,7 @@ name: KathReid Archive Poster
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # every 6 hours
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,48 +13,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Run poster bot
-        run: |
-          python - << 'EOF'
-          import json, random, os, requests
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-          webhook = os.environ["DISCORD_WEBHOOK"]
+      - name: Install dependencies
+        run: pip install requests
 
-          # load data
-          index = json.load(open("index.json"))
-          state = json.load(open("state.json"))
-
-          seen = set(state.get("seen", []))
-
-          # filter unseen
-          available = [x for x in index if x["file"] not in seen]
-
-          # if exhausted, reset cycle (after full archive run)
-          if not available:
-              available = index
-              seen = set()
-
-          item = random.choice(available)
-
-          captions = json.load(open("captions.json"))
-          caption = random.choice(captions).format(year=item["year"])
-
-          # post to discord
-          with open(item["file"], "rb") as f:
-              requests.post(
-                  webhook,
-                  data={"content": caption},
-                  files={"file": f}
-              )
-
-          # update memory
-          seen.add(item["file"])
-          state["seen"] = list(seen)
-
-          with open("state.json", "w") as f:
-              json.dump(state, f, indent=2)
-
-          EOF
-
+      - name: Run bot
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_KRARCH }}
+        run: python bot.py
